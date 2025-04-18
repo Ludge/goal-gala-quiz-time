@@ -8,7 +8,7 @@ import {
   ThumbsUp, 
   ThumbsDown, 
   Award, 
-  Fire, 
+  Flame,  // Replace Fire with Flame
   PartyPopper
 } from 'lucide-react';
 
@@ -29,7 +29,7 @@ const EMOJIS = [
   { id: 'laugh', emoji: '😂', name: 'Laugh', icon: Smile },
   { id: 'sad', emoji: '😢', name: 'Sad', icon: ThumbsDown },
   { id: 'wow', emoji: '😮', name: 'Wow', icon: Award },
-  { id: 'fire', emoji: '🔥', name: 'Fire', icon: Fire },
+  { id: 'fire', emoji: '🔥', name: 'Fire', icon: Flame },  // Update to use Flame
   { id: 'party', emoji: '🎉', name: 'Party', icon: PartyPopper },
 ];
 
