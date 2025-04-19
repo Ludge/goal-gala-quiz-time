@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom'; // Keep useNavigate for potential future use directly in Index
 import RoomForm from '../components/RoomForm';
-import { supabase } from '../../lib/supabaseClient'; // Correct relative path from src/pages to root/lib
+import { supabase } from '@/integrations/supabase/client'; // Updated import path
 import { 
   Card, 
   CardContent, 

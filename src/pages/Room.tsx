@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
+import { supabase } from '@/integrations/supabase/client'; // Updated import path
 import WaitingRoom from '@/components/Quiz/WaitingRoom';
 import QuestionCard from '@/components/Quiz/QuestionCard';
 import LeaderboardCard from '@/components/Quiz/LeaderboardCard';
