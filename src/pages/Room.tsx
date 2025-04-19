@@ -31,6 +31,7 @@ const Room: React.FC = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [roomDetails, setRoomDetails] = useState<{ id: string; code: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isStartingGame, setIsStartingGame] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Determine current player
@@ -147,7 +148,7 @@ const Room: React.FC = () => {
     }
   }, [players, toast]);
 
-  // CORE FEATURE: Set up realtime subscription for room status changes
+  // Set up realtime subscription for room status changes
   useEffect(() => {
     if (!roomDetails?.id) {
       console.log('[Realtime] Waiting for roomDetails.id before setting up subscription...');
@@ -216,7 +217,7 @@ const Room: React.FC = () => {
     };
   }, [roomDetails?.id, navigate, toast, handlePlayerChange]);
 
-  // Handle starting the game
+  // Handle starting the game - UPDATED FLOW
   const handleStartGame = async () => {
     if (!roomDetails?.id || !isHost) {
       console.error("Cannot start game: Invalid room or not host", { roomId: roomDetails?.id, isHost });
@@ -224,64 +225,58 @@ const Room: React.FC = () => {
     }
 
     try {
-      // 1. Update room to 'playing' (prep state)
-      console.log(`Updating room ${roomDetails.id} to 'playing' state`);
+      setIsStartingGame(true);
+      toast({ title: "Getting Ready", description: "Preparing questions..." });
+
+      // 1. Update room to 'preparing' state
+      console.log(`Updating room ${roomDetails.id} to 'preparing' state`);
       const { error: updateError } = await supabase
         .from('rooms')
-        .update({ game_state: 'playing' })
+        .update({ game_state: 'preparing' })
         .eq('id', roomDetails.id);
 
       if (updateError) {
-        console.error("Error updating room game_state:", updateError);
+        console.error("Error updating room to preparing state:", updateError);
         toast({ title: "Error", description: `Failed to start game`, variant: "destructive" });
+        setIsStartingGame(false);
         return;
       }
 
-      toast({ title: "Getting Ready", description: "Preparing questions..." });
+      // 2. Call the Edge Function to generate and store questions
+      console.log("Calling geminiQuiz Edge Function to generate and store questions...");
+      const { data: response, error: functionError } = await supabase.functions
+        .invoke('geminiQuiz', { 
+          body: { 
+            roomId: roomDetails.id,
+            count: 10
+          } 
+        });
 
-      // 2. Fetch questions from Gemini API
-      console.log("Fetching questions from Gemini API...");
-      const { data: questionsData, error: questionsError } = await supabase.functions
-        .invoke('geminiQuiz', { body: { count: 10 } });
-
-      if (questionsError || !questionsData) {
-        console.error("Error fetching questions:", questionsError);
-        toast({ title: "Error", description: "Failed to fetch questions", variant: "destructive" });
+      if (functionError || !response || !response.success) {
+        console.error("Error from geminiQuiz function:", functionError || response?.error);
+        toast({ 
+          title: "Error", 
+          description: "Failed to generate questions. Please try again.", 
+          variant: "destructive" 
+        });
+        
+        // Reset room state on error
+        await supabase
+          .from('rooms')
+          .update({ game_state: 'lobby' })
+          .eq('id', roomDetails.id);
+          
+        setIsStartingGame(false);
         return;
       }
       
-      console.log("Questions received from Gemini:", questionsData);
-      
-      // 3. First, delete any existing questions for this room to avoid conflicts
-      console.log(`Clearing any existing questions for room ${roomDetails.id}...`);
-      await supabase
-        .from('questions')
-        .delete()
-        .eq('room_id', roomDetails.id);
-      
-      // 4. Insert new questions into database
-      console.log("Storing questions in database...");
-      const questionsToInsert = questionsData.questions.map((q: any, index: number) => ({
-        room_id: roomDetails.id,
-        question_number: index,
-        question_text: q.question,
-        options: q.options,
-        correct_option_index: q.correctAnswer !== undefined ? q.correctAnswer : q.correct_option_index
-      }));
+      console.log("Questions successfully generated and stored:", response);
+      toast({ 
+        title: "Questions Ready", 
+        description: `Generated ${response.questionCount} questions` 
+      });
 
-      const { error: insertError } = await supabase
-        .from('questions')
-        .insert(questionsToInsert);
-
-      if (insertError) {
-        console.error("Error storing questions:", insertError);
-        toast({ title: "Error", description: `Failed to store questions`, variant: "destructive" });
-        return;
-      }
-      
-      console.log("Questions successfully stored in database");
-
-      // 5. Update room to 'question_active' to trigger the game start
+      // 3. Now that questions are stored, update room to 'question_active'
       console.log(`Starting game: Updating room ${roomDetails.id} to question_active state`);
       const { error: activeError } = await supabase
         .from('rooms')
@@ -294,14 +289,32 @@ const Room: React.FC = () => {
       if (activeError) {
         console.error("Error updating to question_active state:", activeError);
         toast({ title: "Error", description: `Failed to start game`, variant: "destructive" });
+        
+        // Reset room state on error
+        await supabase
+          .from('rooms')
+          .update({ game_state: 'lobby' })
+          .eq('id', roomDetails.id);
+          
+        setIsStartingGame(false);
         return;
       }
 
       console.log("Game start successful!");
-      // No navigation here - the realtime subscription will handle it
+      // No navigation here - the realtime subscription will handle redirection
     } catch (err) {
       console.error("Unexpected error in handleStartGame:", err);
       toast({ title: "Error", description: "An unexpected error occurred", variant: "destructive" });
+      
+      // Reset room state on error
+      if (roomDetails?.id) {
+        await supabase
+          .from('rooms')
+          .update({ game_state: 'lobby' })
+          .eq('id', roomDetails.id);
+      }
+      
+      setIsStartingGame(false);
     }
   };
 
@@ -338,6 +351,7 @@ const Room: React.FC = () => {
         roomCode={roomCode || 'ERROR'}
         players={players}
         isHost={isHost}
+        isStartingGame={isStartingGame}
         onStartGame={handleStartGame}
       />
     </div>

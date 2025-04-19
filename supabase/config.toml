@@ -1,1 +1,14 @@
+
 project_id = "eyniljtnxvyaqbzetoer"
+
+[functions.geminiQuiz]
+verify_jwt = false
+import_map = [
+  "./import_map.json"
+]
+
+[functions.generate-questions]
+verify_jwt = false
+import_map = [
+  "./import_map.json"
+]

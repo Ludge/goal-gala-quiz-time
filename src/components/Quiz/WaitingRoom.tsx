@@ -15,7 +15,8 @@ import {
   PlayCircle, 
   Share2, 
   ThumbsUp, 
-  Coffee 
+  Coffee,
+  Loader2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,6 +29,7 @@ type WaitingRoomProps = {
   roomCode: string;
   players: Player[];
   isHost: boolean;
+  isStartingGame: boolean;
   onStartGame: () => void;
 };
 
@@ -35,6 +37,7 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({
   roomCode,
   players,
   isHost,
+  isStartingGame,
   onStartGame
 }) => {
   const [isCopied, setIsCopied] = useState(false);
@@ -141,11 +144,20 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({
           <>
             <Button 
               className="w-full" 
-              disabled={players.length < 1}
+              disabled={players.length < 1 || isStartingGame}
               onClick={onStartGame}
             >
-              <PlayCircle className="mr-2 h-4 w-4" />
-              Start Game
+              {isStartingGame ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Preparing Game...
+                </>
+              ) : (
+                <>
+                  <PlayCircle className="mr-2 h-4 w-4" />
+                  Start Game
+                </>
+              )}
             </Button>
             <p className="text-xs text-muted-foreground text-center">
               As the host, you can start the game when everyone is ready
@@ -154,8 +166,17 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({
         ) : (
           <>
             <div className="flex items-center justify-center gap-2 text-muted-foreground">
-              <ThumbsUp className="h-4 w-4" />
-              <span>Waiting for host to start the game...</span>
+              {isStartingGame ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Host is preparing the game...</span>
+                </>
+              ) : (
+                <>
+                  <ThumbsUp className="h-4 w-4" />
+                  <span>Waiting for host to start the game...</span>
+                </>
+              )}
             </div>
           </>
         )}

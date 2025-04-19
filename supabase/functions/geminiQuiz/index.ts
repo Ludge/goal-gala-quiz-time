@@ -1,7 +1,9 @@
+
 // @ts-expect-error: Deno Deploy remote import
 // deno-types="https://deno.land/std@0.168.0/http/server.ts"
 // deno-types="deno.ns"
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 // deno-lint-ignore-file no-undef
 
 const corsHeaders = {
@@ -41,12 +43,41 @@ serve(async (req) => {
   }
 
   try {
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    if (!GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY is not set');
+    // Get supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') as string;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') as string;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { roomId, count = 10, authorization } = await req.json();
+    
+    console.log(`Received request to generate ${count} questions for room ${roomId}`);
+    
+    if (!roomId) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing required parameters: roomId is required' 
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      );
     }
 
-    const { count = 10 } = await req.json();
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      console.error('GEMINI_API_KEY is not set');
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error: API key not set' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500,
+        }
+      );
+    }
+
+    // Step 1: Generate questions with Gemini
+    console.log(`Generating ${count} questions from Gemini API...`);
     const formattedPrompt = PROMPT.replace('{count}', count.toString());
 
     const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -67,7 +98,9 @@ serve(async (req) => {
     });
 
     if (!geminiResponse.ok) {
-      throw new Error(`Failed to fetch from Gemini API: ${await geminiResponse.text()}`);
+      const errorText = await geminiResponse.text();
+      console.error(`Failed to fetch from Gemini API: ${errorText}`);
+      throw new Error(`Failed to fetch from Gemini API: ${errorText}`);
     }
 
     const geminiData = await geminiResponse.json();
@@ -77,19 +110,75 @@ serve(async (req) => {
     // Extract the JSON part from the response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      console.error('Failed to parse AI response, no JSON found');
       throw new Error('Failed to parse AI response');
     }
 
-    const parsedQuestions = JSON.parse(jsonMatch[0]);
+    let parsedQuestions;
+    try {
+      parsedQuestions = JSON.parse(jsonMatch[0]);
+      console.log(`Successfully parsed ${parsedQuestions.questions.length} questions from Gemini`);
+    } catch (parseError) {
+      console.error('Error parsing Gemini response:', parseError);
+      throw new Error(`Failed to parse AI response as JSON: ${parseError.message}`);
+    }
 
-    return new Response(JSON.stringify(parsedQuestions), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    // Step 2: Store questions in database
+    console.log(`Storing questions in database for room ${roomId}...`);
+    
+    // First, delete any existing questions for this room (cleanup)
+    const { error: deleteError } = await supabase
+      .from('questions')
+      .delete()
+      .eq('room_id', roomId);
+    
+    if (deleteError) {
+      console.error('Error deleting existing questions:', deleteError);
+      throw new Error(`Failed to clean up existing questions: ${deleteError.message}`);
+    }
+    
+    // Format and insert new questions
+    const questionsToInsert = parsedQuestions.questions.map((q: any, index: number) => ({
+      room_id: roomId,
+      question_number: index,
+      question_text: q.question,
+      options: q.options,
+      correct_option_index: q.correctAnswer !== undefined ? q.correctAnswer : q.correct_option_index
+    }));
+
+    const { error: insertError } = await supabase
+      .from('questions')
+      .insert(questionsToInsert);
+
+    if (insertError) {
+      console.error('Error storing questions:', insertError);
+      throw new Error(`Failed to store questions: ${insertError.message}`);
+    }
+
+    console.log(`Successfully stored ${questionsToInsert.length} questions for room ${roomId}`);
+
+    // Step 3: Return success response to frontend
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: `Successfully generated and stored ${questionsToInsert.length} questions`,
+        questionCount: questionsToInsert.length
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
   } catch (error) {
-    console.error('Error in generate-quiz-questions function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error('Error in geminiQuiz function:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: error.message || 'An unexpected error occurred',
+        success: false
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
   }
 });
