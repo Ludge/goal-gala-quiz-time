@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { 
   Card, 
   CardContent, 
@@ -7,161 +7,108 @@ import {
   CardHeader,
   CardTitle 
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Clock } from 'lucide-react';
 import { Confetti } from '../ui/Confetti';
 
-type Question = {
-  id: string;
-  text: string;
-  options: string[];
-  correctOptionIndex: number;
-};
-
 type QuestionCardProps = {
-  question: Question;
-  timeLimit: number;
-  onAnswer: (optionIndex: number, timeElapsed: number) => void;
-  showCorrectAnswer: boolean;
-  userAnswer?: number | null;
-  timeElapsed?: number;
+  question: string;
+  options: string[];
+  timeRemaining: number;
+  onSelectOption: (optionIndex: number) => void;
+  selectedOption: number | null;
+  correctOptionIndex?: number;
+  questionNumber: number;
+  totalQuestions: number;
 };
 
 const QuestionCard: React.FC<QuestionCardProps> = ({
   question,
-  timeLimit,
-  onAnswer,
-  showCorrectAnswer,
-  userAnswer,
-  timeElapsed
+  options,
+  timeRemaining,
+  onSelectOption,
+  selectedOption,
+  correctOptionIndex,
+  questionNumber,
+  totalQuestions
 }) => {
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [timeRemaining, setTimeRemaining] = useState(timeLimit);
-  const [showConfetti, setShowConfetti] = useState(false);
-  const [startTime, setStartTime] = useState<number | null>(null);
-  
-  useEffect(() => {
-    // Reset state when question changes
-    setSelectedOption(null);
-    setTimeRemaining(timeLimit);
-    setStartTime(Date.now());
-    
-    if (!showCorrectAnswer) {
-      const timer = setInterval(() => {
-        setTimeRemaining(prev => {
-          if (prev <= 0 || selectedOption !== null) {
-            clearInterval(timer);
-            if (prev <= 0 && selectedOption === null) {
-              const elapsed = Date.now() - (startTime || Date.now());
-              onAnswer(-1, elapsed); // No answer selected, send -1
-            }
-            return 0;
-          }
-          return prev - 0.1;
-        });
-      }, 100);
-      
-      return () => clearInterval(timer);
-    }
-  }, [question.id, timeLimit, showCorrectAnswer]);
-  
-  useEffect(() => {
-    if (showCorrectAnswer && userAnswer === question.correctOptionIndex) {
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 3000);
-    }
-  }, [showCorrectAnswer]);
-  
-  const handleOptionClick = (optionIndex: number) => {
-    if (selectedOption !== null || showCorrectAnswer) return;
-    
-    setSelectedOption(optionIndex);
-    const elapsed = Date.now() - (startTime || Date.now());
-    onAnswer(optionIndex, elapsed);
-  };
+  const isAnswered = correctOptionIndex !== undefined;
+  const showConfetti = isAnswered && selectedOption === correctOptionIndex;
   
   const getOptionClassName = (index: number) => {
-    let className = "answer-option";
+    let className = "p-4 mb-3 border rounded-lg flex items-center cursor-pointer hover:bg-muted/50 transition-colors";
     
-    if (showCorrectAnswer) {
-      if (index === question.correctOptionIndex) {
-        className += " correct";
-      } else if (userAnswer === index) {
-        className += " incorrect";
+    if (isAnswered) {
+      if (index === correctOptionIndex) {
+        className += " border-green-500 bg-green-50 dark:bg-green-900/20";
+      } else if (selectedOption === index) {
+        className += " border-red-500 bg-red-50 dark:bg-red-900/20";
       }
     } else if (selectedOption === index) {
-      className += " selected";
+      className += " border-primary bg-primary/10";
     }
     
     return className;
-  };
-  
-  const renderTimerBar = () => {
-    if (showCorrectAnswer) return null;
-    
-    const percentRemaining = (timeRemaining / timeLimit) * 100;
-    return (
-      <div className="timer-bar mt-4">
-        <div 
-          className="bg-primary h-full transition-all duration-100" 
-          style={{ width: `${percentRemaining}%` }}
-        />
-      </div>
-    );
   };
 
   return (
     <>
       {showConfetti && <Confetti />}
-      <Card className="w-full animate-fade-in">
+      <Card className="w-full max-w-xl animate-fade-in">
         <CardHeader>
           <div className="flex justify-between items-center mb-2">
-            <CardTitle className="text-xl">{question.text}</CardTitle>
+            <div className="text-sm text-muted-foreground">
+              Question {questionNumber} of {totalQuestions}
+            </div>
+            <div className="flex items-center">
+              <Clock className="h-4 w-4 mr-1 text-muted-foreground" />
+              <span className={`font-medium ${timeRemaining < 10 ? 'text-red-500' : ''}`}>
+                {timeRemaining}s
+              </span>
+            </div>
           </div>
-          {renderTimerBar()}
+          <CardTitle className="text-xl">{question}</CardTitle>
+          <div className="w-full bg-muted h-2 mt-4 rounded-full overflow-hidden">
+            <div 
+              className="bg-primary h-full transition-all duration-100" 
+              style={{ width: `${(timeRemaining / 30) * 100}%` }}
+            />
+          </div>
         </CardHeader>
         
         <CardContent className="space-y-3">
-          {question.options.map((option, index) => (
+          {options.map((option, index) => (
             <div
               key={index}
               className={getOptionClassName(index)}
-              onClick={() => handleOptionClick(index)}
+              onClick={() => !isAnswered && onSelectOption(index)}
             >
               <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center mr-3">
                 {String.fromCharCode(65 + index)}
               </span>
               <span className="flex-1">{option}</span>
-              {showCorrectAnswer && index === question.correctOptionIndex && (
+              {isAnswered && index === correctOptionIndex && (
                 <CheckCircle className="ml-2 text-green-500" />
               )}
-              {showCorrectAnswer && userAnswer === index && index !== question.correctOptionIndex && (
+              {isAnswered && selectedOption === index && index !== correctOptionIndex && (
                 <XCircle className="ml-2 text-red-500" />
               )}
             </div>
           ))}
         </CardContent>
         
-        {showCorrectAnswer && (
-          <CardFooter className="flex justify-between items-center text-sm text-muted-foreground">
-            <div className="flex items-center">
-              <Clock className="h-4 w-4 mr-1" />
-              {timeElapsed ? `${(timeElapsed / 1000).toFixed(1)}s` : "Time's up!"}
-            </div>
-            
-            <div>
-              {userAnswer === question.correctOptionIndex ? (
-                <span className="text-green-500 font-medium flex items-center">
-                  <CheckCircle className="h-4 w-4 mr-1" />
-                  Correct!
-                </span>
-              ) : (
-                <span className="text-red-500 font-medium flex items-center">
-                  <XCircle className="h-4 w-4 mr-1" />
-                  {userAnswer === -1 ? "Time's up!" : "Incorrect"}
-                </span>
-              )}
-            </div>
+        {isAnswered && (
+          <CardFooter className="justify-center pt-4">
+            {selectedOption === correctOptionIndex ? (
+              <div className="text-green-500 font-medium flex items-center">
+                <CheckCircle className="h-5 w-5 mr-2" />
+                Correct Answer!
+              </div>
+            ) : (
+              <div className="text-red-500 font-medium flex items-center">
+                <XCircle className="h-5 w-5 mr-2" />
+                {selectedOption === -1 ? "Time's up!" : "Incorrect Answer"}
+              </div>
+            )}
           </CardFooter>
         )}
       </Card>

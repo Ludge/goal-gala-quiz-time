@@ -200,7 +200,7 @@ const Question: React.FC = () => {
       setTimeRemaining(prev => {
         // When timer reaches 0, handle timeout
         if (prev <= 1 && !hasAnswered) {
-          console.log('[Question] Time's up! No answer selected.');
+          console.log("[Question] Time's up! No answer selected.");
           
           // Auto-submit timeout answer
           if (!hasAnswered) {
