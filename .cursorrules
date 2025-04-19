@@ -1,0 +1,49 @@
+🧠 AI Behavior
+- Proactively implement features described in any task or comment without waiting for explicit instructions.
+- Before creating new components or pages, review the existing codebase, especially the src folder, to avoid duplication and promote code reuse.
+
+📁 Project Structure
+- Maintain a clear and modular structure within the src directory.
+- Organize code into appropriate subdirectories (e.g., components, utils, services) to enhance readability and maintainability.
+
+🛠️ Supabase Integration
+- Utilize Supabase for backend functionalities, including real-time capabilities and database interactions.
+- Ensure proper configuration of environment variables (e.g., Supabase URL and anon key).
+
+🧩 Real-time Game Features
+- Implement real-time multiplayer support using Supabase's real-time features.
+- Ensure players receive live updates, such as player joins and score changes.
+
+🏆 Leaderboard System
+- Create a leaderboard table in Supabase to track player scores.
+- Implement logic to insert and update scores.
+- Ensure real-time updates reflect on the UI, reusing existing components when available.
+
+🔄 Edge Function with Gemini
+- Develop a Supabase Edge Function that leverages Gemini AI to generate quiz questions.
+- The function should return a JSON object containing:
+  - A quiz question
+  - A list of multiple-choice answers
+  - An indication of the correct answer
+- Ensure the function is callable from the frontend or game logic.
+
+📌 Coding Standards
+- Use clear and descriptive variable and function names.
+- Write concise and maintainable code, adhering to best practices.
+- Include comments to explain complex logic or decisions.
+
+✅ Testing and Validation
+- Implement appropriate error handling and validation mechanisms.
+- Ensure all new features are tested and function as intended.
+
+📄 Documentation
+- Document new features and components thoroughly.
+- Update existing documentation to reflect changes or enhancements.
+
+🚀 Performance Optimization
+- Optimize code for performance, especially in real-time features.
+- Minimize unnecessary re-renders and redundant computations.
+
+🔐 Security
+- Ensure secure handling of user data and authentication processes.
+- Follow best practices to protect against common vulnerabilities.
