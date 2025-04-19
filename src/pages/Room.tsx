@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import WaitingRoom from '@/components/Quiz/WaitingRoom';
@@ -38,6 +38,10 @@ const Room: React.FC = () => {
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
   const isHost = players.find(p => p.id === currentPlayerId)?.is_host ?? false;
   
+  // Use refs to track subscription state and prevent duplicate subscriptions
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const hasRedirectedRef = useRef<boolean>(false);
+
   // Fetch initial room details and players
   const fetchInitialData = useCallback(async () => {
     if (!roomCode) return;
@@ -148,6 +152,40 @@ const Room: React.FC = () => {
     }
   }, [players, toast]);
 
+  // Handle room state changes
+  const handleRoomStateChange = useCallback((payload: any) => {
+    console.log('[Realtime] Room update received:', payload);
+    
+    if (!payload.new || typeof payload.new.game_state !== 'string' || hasRedirectedRef.current) {
+      return;
+    }
+    
+    const newGameState = payload.new.game_state;
+    console.log(`[Realtime] Room state changed to: ${newGameState}`);
+    
+    // CRITICAL PATH: Redirect to question view when game starts
+    if (newGameState === 'question_active' && roomDetails?.id && !hasRedirectedRef.current) {
+      console.log(`[Realtime] Game starting! Navigating to question view`);
+      
+      // Mark as redirected to prevent duplicate navigation
+      hasRedirectedRef.current = true;
+      
+      toast({ 
+        title: "Game Starting!", 
+        description: "First question is ready!",
+        variant: "default" 
+      });
+      
+      // Add a slight delay to ensure the toast is seen
+      setTimeout(() => {
+        // Navigate with state containing the room ID
+        navigate(`/question`, { 
+          state: { roomId: roomDetails.id } 
+        });
+      }, 500);
+    }
+  }, [roomDetails?.id, navigate, toast]);
+
   // Set up realtime subscription for room status changes
   useEffect(() => {
     if (!roomDetails?.id) {
@@ -155,47 +193,32 @@ const Room: React.FC = () => {
       return;
     }
 
+    if (channelRef.current) {
+      console.log('[Realtime] Channel already exists, not creating a new one');
+      return;
+    }
+
     console.log(`[Realtime] Setting up subscription for room ID: ${roomDetails.id}`);
     
+    // Create a unique channel name with room ID to avoid conflicts
+    const channelName = `room-updates-${roomDetails.id}-${Date.now()}`;
+    
     // Create a dedicated channel for this room
-    const channel = supabase.channel(`room-updates-${roomDetails.id}`, {
-      config: { broadcast: { self: true } }
+    const channel = supabase.channel(channelName, {
+      config: { 
+        broadcast: { self: true },
+        presence: { key: '' },
+      }
     });
 
-    // DEBUGGING: Add explicit listener for room updates - especially game_state changes
+    // Listen for room updates - especially game_state changes
     channel
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public', 
         table: 'rooms',
         filter: `id=eq.${roomDetails.id}`
-      }, (payload) => {
-        console.log('[Realtime] Room update received:', payload);
-        
-        if (payload.new && typeof payload.new.game_state === 'string') {
-          const newGameState = payload.new.game_state;
-          
-          console.log(`[Realtime] Room ${roomDetails.id} state changed to: ${newGameState}`);
-          
-          // CRITICAL PATH: Redirect to question view when game starts
-          if (newGameState === 'question_active') {
-            console.log(`[Realtime] Game starting! Navigating to question view`);
-            toast({ 
-              title: "Game Starting!", 
-              description: "First question is ready!",
-              variant: "default" 
-            });
-            
-            // Add a slight delay to ensure the toast is seen
-            setTimeout(() => {
-              // Navigate with state containing the room ID
-              navigate(`/question`, { 
-                state: { roomId: roomDetails.id } 
-              });
-            }, 500);
-          }
-        }
-      })
+      }, handleRoomStateChange)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
@@ -205,8 +228,11 @@ const Room: React.FC = () => {
       .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
           console.log(`[Realtime] Successfully subscribed to room updates for ${roomDetails.id}`);
+          // Store the channel in the ref so we don't create multiple subscriptions
+          channelRef.current = channel;
         } else {
           console.error(`[Realtime] Subscription error:`, status, err);
+          channelRef.current = null;
           toast({ 
             title: "Connection Issue", 
             description: "Problem connecting to game updates. Please refresh.",
@@ -218,9 +244,10 @@ const Room: React.FC = () => {
     // Fallback mechanism - if room state is 'question_active' but no realtime event fired
     // Check every 3 seconds for game state
     const fallbackInterval = setInterval(async () => {
-      if (!roomDetails?.id) return;
+      if (!roomDetails?.id || hasRedirectedRef.current) return;
       
       try {
+        console.log('[Fallback] Checking room state...');
         const { data, error } = await supabase
           .from('rooms')
           .select('game_state')
@@ -232,8 +259,12 @@ const Room: React.FC = () => {
           return;
         }
         
-        if (data.game_state === 'question_active') {
+        if (data.game_state === 'question_active' && !hasRedirectedRef.current) {
           console.log('[Fallback] Detected game_state=question_active through polling');
+          
+          // Mark as redirected to prevent duplicate navigation
+          hasRedirectedRef.current = true;
+          
           toast({ 
             title: "Game Starting!", 
             description: "First question is ready!"
@@ -250,15 +281,21 @@ const Room: React.FC = () => {
       }
     }, 3000);
 
-    // Cleanup function
+    // Cleanup function - only run this when component is ACTUALLY unmounting
     return () => {
       console.log(`[Realtime] Cleaning up subscription for room ${roomDetails.id}`);
       clearInterval(fallbackInterval);
-      supabase.removeChannel(channel).then(success => {
-        console.log(`[Realtime] Channel cleanup ${success ? 'successful' : 'failed'}`);
-      });
+      
+      // Only clean up if we have a valid channel
+      if (channelRef.current) {
+        console.log('[Realtime] Removing channel...');
+        supabase.removeChannel(channelRef.current).then(success => {
+          console.log(`[Realtime] Channel cleanup ${success ? 'successful' : 'failed'}`);
+          channelRef.current = null;
+        });
+      }
     };
-  }, [roomDetails?.id, navigate, toast, handlePlayerChange]);
+  }, [roomDetails?.id, navigate, toast, handlePlayerChange, handleRoomStateChange]);
 
   // Handle starting the game - UPDATED FLOW
   const handleStartGame = async () => {
@@ -344,9 +381,11 @@ const Room: React.FC = () => {
       }
 
       console.log("Game start successful!");
-      // Force navigation after a short delay if the realtime event doesn't trigger
+      
+      // If the redirect doesn't happen via the realtime event
       setTimeout(() => {
-        if (roomDetails?.id) {
+        if (roomDetails?.id && !hasRedirectedRef.current) {
+          hasRedirectedRef.current = true;
           console.log("[Fallback] Using explicit navigation after game start");
           navigate(`/question`, { state: { roomId: roomDetails.id } });
         }

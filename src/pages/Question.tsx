@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import QuestionCard from '@/components/Quiz/QuestionCard';
@@ -31,6 +31,9 @@ const Question: React.FC = () => {
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+
+  // Use ref to track channel subscription and prevent duplicate subscriptions
+  const channelRef = useRef<RealtimeChannel | null>(null);
   
   // Load current player ID from localStorage
   useEffect(() => {
@@ -38,8 +41,16 @@ const Question: React.FC = () => {
       const playerId = localStorage.getItem(`ggqt-playerId-${roomId}`);
       console.log(`[Question] Current player ID for room ${roomId}:`, playerId);
       setCurrentPlayerId(playerId);
+    } else {
+      console.error("[Question] No roomId provided in location state");
+      toast({ 
+        title: "Error", 
+        description: "Missing game session data. Returning to home.",
+        variant: "destructive"
+      });
+      navigate('/');
     }
-  }, [roomId]);
+  }, [roomId, navigate, toast]);
 
   // Fetch questions and room data
   const fetchQuestionData = useCallback(async () => {
@@ -128,16 +139,26 @@ const Question: React.FC = () => {
   
   // Initial data load
   useEffect(() => {
-    fetchQuestionData();
-  }, [fetchQuestionData]);
+    if (roomId) {
+      fetchQuestionData();
+    }
+  }, [fetchQuestionData, roomId]);
   
   // Set up realtime subscription for room updates
   useEffect(() => {
     if (!roomId) return;
     
+    if (channelRef.current) {
+      console.log('[Question Realtime] Channel already exists, not creating a new one');
+      return;
+    }
+    
     console.log(`[Question Realtime] Setting up subscription for room updates for room ${roomId}`);
     
-    const channel: RealtimeChannel = supabase.channel(`question-updates-${roomId}`, {
+    // Create a unique channel name to avoid conflicts
+    const channelName = `question-updates-${roomId}-${Date.now()}`;
+    
+    const channel: RealtimeChannel = supabase.channel(channelName, {
       config: { broadcast: { self: true } }
     });
     
@@ -190,8 +211,10 @@ const Question: React.FC = () => {
       .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
           console.log(`[Question Realtime] Successfully subscribed to room ${roomId} updates`);
+          channelRef.current = channel;
         } else {
           console.error(`[Question Realtime] Subscription error:`, status, err);
+          channelRef.current = null;
         }
       });
       
@@ -217,9 +240,13 @@ const Question: React.FC = () => {
     return () => {
       console.log(`[Question Realtime] Cleaning up subscriptions and timer`);
       clearInterval(timer);
-      supabase.removeChannel(channel).then(success => {
-        console.log(`[Question Realtime] Channel cleanup ${success ? 'successful' : 'failed'}`);
-      });
+      
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current).then(success => {
+          console.log(`[Question Realtime] Channel cleanup ${success ? 'successful' : 'failed'}`);
+          channelRef.current = null;
+        });
+      }
     };
   }, [roomId, currentQuestionIndex, hasAnswered, navigate, toast]);
   
