@@ -16,7 +16,8 @@ import {
   Share2, 
   ThumbsUp, 
   Coffee,
-  Loader2
+  Loader2,
+  Rocket
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -91,6 +92,7 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({
               size="icon" 
               onClick={copyRoomCode}
               className="h-10 w-10"
+              disabled={isStartingGame}
             >
               <Copy className={`h-4 w-4 ${isCopied ? 'text-green-500' : ''}`} />
             </Button>
@@ -100,6 +102,7 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({
               size="icon" 
               onClick={shareRoom}
               className="h-10 w-10"
+              disabled={isStartingGame}
             >
               <Share2 className="h-4 w-4" />
             </Button>
@@ -137,6 +140,16 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({
             )}
           </div>
         </div>
+        
+        {isStartingGame && (
+          <div className="bg-primary/10 p-4 rounded-lg text-center mt-4 animate-pulse">
+            <Rocket className="h-6 w-6 mx-auto mb-2 text-primary" />
+            <p className="font-medium text-primary">Preparing your questions!</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              This will just take a moment...
+            </p>
+          </div>
+        )}
       </CardContent>
       
       <CardFooter className="flex flex-col gap-3">

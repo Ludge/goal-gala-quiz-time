@@ -29,7 +29,7 @@ const Room: React.FC = () => {
   
   // Core state
   const [players, setPlayers] = useState<Player[]>([]);
-  const [roomDetails, setRoomDetails] = useState<{ id: string; code: string } | null>(null);
+  const [roomDetails, setRoomDetails] = useState<{ id: string; code: string; game_state: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingGame, setIsStartingGame] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,11 +158,11 @@ const Room: React.FC = () => {
     console.log(`[Realtime] Setting up subscription for room ID: ${roomDetails.id}`);
     
     // Create a dedicated channel for this room
-    const channel: RealtimeChannel = supabase.channel(`room-updates-${roomDetails.id}`, {
+    const channel = supabase.channel(`room-updates-${roomDetails.id}`, {
       config: { broadcast: { self: true } }
     });
 
-    // Listen for room updates - especially game_state changes
+    // DEBUGGING: Add explicit listener for room updates - especially game_state changes
     channel
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -180,12 +180,19 @@ const Room: React.FC = () => {
           // CRITICAL PATH: Redirect to question view when game starts
           if (newGameState === 'question_active') {
             console.log(`[Realtime] Game starting! Navigating to question view`);
-            toast({ title: "Game Starting!", description: "First question is ready!" });
-            
-            // Navigate with state containing the room ID
-            navigate(`/question`, { 
-              state: { roomId: roomDetails.id } 
+            toast({ 
+              title: "Game Starting!", 
+              description: "First question is ready!",
+              variant: "default" 
             });
+            
+            // Add a slight delay to ensure the toast is seen
+            setTimeout(() => {
+              // Navigate with state containing the room ID
+              navigate(`/question`, { 
+                state: { roomId: roomDetails.id } 
+              });
+            }, 500);
           }
         }
       })
@@ -208,9 +215,45 @@ const Room: React.FC = () => {
         }
       });
 
+    // Fallback mechanism - if room state is 'question_active' but no realtime event fired
+    // Check every 3 seconds for game state
+    const fallbackInterval = setInterval(async () => {
+      if (!roomDetails?.id) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('rooms')
+          .select('game_state')
+          .eq('id', roomDetails.id)
+          .single();
+          
+        if (error) {
+          console.error('[Fallback] Error fetching room state:', error);
+          return;
+        }
+        
+        if (data.game_state === 'question_active') {
+          console.log('[Fallback] Detected game_state=question_active through polling');
+          toast({ 
+            title: "Game Starting!", 
+            description: "First question is ready!"
+          });
+          
+          navigate(`/question`, { 
+            state: { roomId: roomDetails.id } 
+          });
+          
+          clearInterval(fallbackInterval);
+        }
+      } catch (err) {
+        console.error('[Fallback] Error in fallback check:', err);
+      }
+    }, 3000);
+
     // Cleanup function
     return () => {
       console.log(`[Realtime] Cleaning up subscription for room ${roomDetails.id}`);
+      clearInterval(fallbackInterval);
       supabase.removeChannel(channel).then(success => {
         console.log(`[Realtime] Channel cleanup ${success ? 'successful' : 'failed'}`);
       });
@@ -301,7 +344,13 @@ const Room: React.FC = () => {
       }
 
       console.log("Game start successful!");
-      // No navigation here - the realtime subscription will handle redirection
+      // Force navigation after a short delay if the realtime event doesn't trigger
+      setTimeout(() => {
+        if (roomDetails?.id) {
+          console.log("[Fallback] Using explicit navigation after game start");
+          navigate(`/question`, { state: { roomId: roomDetails.id } });
+        }
+      }, 2000);
     } catch (err) {
       console.error("Unexpected error in handleStartGame:", err);
       toast({ title: "Error", description: "An unexpected error occurred", variant: "destructive" });
