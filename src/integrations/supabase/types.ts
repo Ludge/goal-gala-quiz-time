@@ -134,21 +134,21 @@ export type Database = {
         Row: {
           code: string
           created_at: string
-          game_state: string
+          game_state: 'lobby' | 'preparing' | 'question_active' | 'showing_leaderboard' | 'finished'
           id: string
           question_index: number
         }
         Insert: {
           code: string
           created_at?: string
-          game_state?: string
+          game_state?: 'lobby' | 'preparing' | 'question_active' | 'showing_leaderboard' | 'finished'
           id?: string
           question_index?: number
         }
         Update: {
           code?: string
           created_at?: string
-          game_state?: string
+          game_state?: 'lobby' | 'preparing' | 'question_active' | 'showing_leaderboard' | 'finished'
           id?: string
           question_index?: number
         }
@@ -159,7 +159,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_leaderboard: {
+        Args: { p_room_id: string }
+        Returns: Array<{
+          player_id: string
+          player_name: string
+          correct_answers: number
+          total_time_ms: number
+        }>
+      }
     }
     Enums: {
       [_ in never]: never

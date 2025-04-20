@@ -10,6 +10,7 @@ import {
   CardTitle 
 } from '@/components/ui/card';
 import { Trophy, Users, Clock, Brain } from 'lucide-react';
+import { setPlayerCookie } from '@/lib/utils';
 
 // Function to generate a simple 6-char room code
 function generateRoomCode(): string {
@@ -66,6 +67,8 @@ const createRoom = async (playerName: string): Promise<string> => {
     localStorage.setItem(`ggqt-roomId-${roomCode}`, roomData.id); // Store room ID too, might be useful
     localStorage.setItem(`ggqt-playerId-${roomData.id}`, hostPlayerData.id);
     console.log(`Host player ${playerName} (ID: ${hostPlayerData.id}) added to room ${roomCode}. Stored ID locally.`);
+    // Set player identity cookies for RLS
+    setPlayerCookie(playerName.trim(), hostPlayerData.id);
     
     // 4. Return the room code for navigation (handled by RoomForm)
     return roomCode;
@@ -131,6 +134,8 @@ const joinRoom = async (roomCode: string, playerName: string): Promise<void> => 
     localStorage.setItem(`ggqt-roomId-${upperCaseRoomCode}`, roomData.id);
     localStorage.setItem(`ggqt-playerId-${roomData.id}`, joiningPlayerData.id);
     console.log(`Player ${playerName} (ID: ${joiningPlayerData.id}) successfully joined room ${upperCaseRoomCode}. Stored ID locally.`);
+    // Set player identity cookies for RLS
+    setPlayerCookie(playerName.trim(), joiningPlayerData.id);
     
     // Navigation is handled by RoomForm, so we just return successfully
     return;

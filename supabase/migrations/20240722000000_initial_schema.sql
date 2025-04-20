@@ -98,4 +98,22 @@ create policy "Allow players in the room to view answers" on public.answers for 
 drop publication if exists supabase_realtime;
 
 -- Create publication for all tables needed for realtime updates
-create publication supabase_realtime for table public.rooms, public.players, public.questions, public.answers; 
+create publication supabase_realtime for table public.rooms, public.players, public.questions, public.answers;
+
+-- Create the 'game_state' enum if it exists in the database
+-- If this enum type already exists, we'll add the 'showing_leaderboard' value to it
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'game_state_enum') THEN
+        -- Check if 'showing_leaderboard' value exists in the enum
+        IF NOT EXISTS (
+            SELECT 1 
+            FROM pg_enum 
+            WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'game_state_enum')
+            AND enumlabel = 'showing_leaderboard'
+        ) THEN
+            -- Add the value to the enum
+            ALTER TYPE game_state_enum ADD VALUE 'showing_leaderboard';
+        END IF;
+    END IF;
+END $$; 
