@@ -1,3 +1,4 @@
+
 -- Function to calculate leaderboard for a given room
 create or replace function public.get_leaderboard(p_room_id uuid)
 returns table (
